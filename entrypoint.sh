@@ -12,7 +12,7 @@ if [ -n "${GH_REPO:-}" ] && [ -n "${GH_REPO_PASS:-}" ]; then
       -pass pass:"$GH_REPO_PASS" \
       -in "$TOKEN_FILE" 2>/dev/null || echo "")
     if [ -n "$TOKEN" ]; then
-      echo "$TOKEN" | gh auth login --with-token
+      gh auth login --with-token <<< "$TOKEN"
       echo "gh: $GH_REPO で認証しました。"
     else
       echo "Warning: トークンの復号に失敗しました。cc init を再実行してください。" >&2

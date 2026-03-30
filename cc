@@ -46,6 +46,7 @@ _select_backend() {
     *) echo "Error: 1 または 2 を入力してください。" >&2; exit 1 ;;
   esac
   echo "SECRETS_BACKEND=${SECRETS_BACKEND}" > "$CC_CONFIG"
+  chmod 600 "$CC_CONFIG"
   echo "保存しました: ${CC_CONFIG} (backend=${SECRETS_BACKEND})"
   echo ""
 }
@@ -118,6 +119,7 @@ _secret_write() {
     keychain)
       security add-generic-password -U -s "$KEYCHAIN_SERVICE" -a "$key" -w "$value"
       ;;
+    *) echo "Error: 不正なバックエンド: $SECRETS_BACKEND" >&2; exit 1 ;;
   esac
 }
 
@@ -130,6 +132,7 @@ _secret_read() {
     keychain)
       security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$key" -w 2>/dev/null || echo ""
       ;;
+    *) echo "Error: 不正なバックエンド: $SECRETS_BACKEND" >&2; exit 1 ;;
   esac
 }
 
@@ -138,6 +141,7 @@ _secret_exists() {
   case "$SECRETS_BACKEND" in
     1password) op item get "$(_op_item_name "$key")" --vault "$OP_VAULT" &>/dev/null ;;
     keychain)  security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$key" &>/dev/null ;;
+    *) echo "Error: 不正なバックエンド: $SECRETS_BACKEND" >&2; exit 1 ;;
   esac
 }
 
@@ -146,6 +150,7 @@ _secret_delete() {
   case "$SECRETS_BACKEND" in
     1password) op item delete "$(_op_item_name "$key")" --vault "$OP_VAULT" 2>/dev/null || true ;;
     keychain)  security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$key" 2>/dev/null || true ;;
+    *) echo "Error: 不正なバックエンド: $SECRETS_BACKEND" >&2; exit 1 ;;
   esac
 }
 
@@ -166,7 +171,7 @@ _secret_list_repos() {
 _registry_add() {
   [ "$SECRETS_BACKEND" = "keychain" ] || return 0
   local repo="$1"
-  touch "$CC_REGISTRY"
+  touch "$CC_REGISTRY" && chmod 600 "$CC_REGISTRY"
   grep -qxF "$repo" "$CC_REGISTRY" || echo "$repo" >> "$CC_REGISTRY"
 }
 
@@ -334,7 +339,8 @@ cmd_revoke() {
 
   docker run --rm \
     -v "${TOKEN_VOLUME}:/tokens" \
-    alpine sh -c "rm -f '/tokens/$key'"
+    -e KEY="$key" \
+    alpine sh -c 'rm -f "/tokens/$KEY"'
 
   _secret_delete "repo:${repo}"
   _registry_remove "$repo"
