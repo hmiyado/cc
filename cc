@@ -266,13 +266,22 @@ cmd_init() {
   local key
   key=$(_token_file_key "$repo")
 
+  local secrets_dir
+  secrets_dir=$(mktemp -d)
+  chmod 700 "$secrets_dir"
+  printf '%s' "$pass" > "$secrets_dir/pass"
+  printf '%s' "$token" > "$secrets_dir/token"
+  chmod 600 "$secrets_dir"/*
+
+  local rc=0
   docker run --rm \
     -v "${TOKEN_VOLUME}:/tokens" \
-    -e PASS="$pass" \
-    -e TOKEN="$token" \
+    -v "$secrets_dir:/run/secrets:ro" \
     -e KEY="$key" \
     alpine sh -c \
-      'echo -n "$TOKEN" | openssl enc -aes-256-cbc -pbkdf2 -pass env:PASS -out "/tokens/$KEY" && chmod 600 "/tokens/$KEY"'
+      'cat /run/secrets/token | openssl enc -aes-256-cbc -pbkdf2 -pass file:/run/secrets/pass -out "/tokens/$KEY" && chmod 600 "/tokens/$KEY"' || rc=$?
+  rm -rf "$secrets_dir"
+  [ $rc -ne 0 ] && return $rc
 
   echo "保存しました: $repo"
 }
@@ -306,18 +315,26 @@ cmd_run() {
     fi
   fi
 
+  local secrets_dir
+  secrets_dir=$(mktemp -d)
+  chmod 700 "$secrets_dir"
+  [ -n "$anthropic_key" ] && { printf '%s' "$anthropic_key" > "$secrets_dir/anthropic_api_key"; chmod 600 "$secrets_dir/anthropic_api_key"; }
+  [ -n "$pass" ]          && { printf '%s' "$pass"          > "$secrets_dir/gh_repo_pass";      chmod 600 "$secrets_dir/gh_repo_pass"; }
+
   local tty_flags="-i"
   [ -t 0 ] && tty_flags="-it"
 
+  local rc=0
   docker run $tty_flags --rm \
     -v "$(pwd)":/workspace \
     -v ~/.claude:/home/claude/.claude \
     -v ~/.gstack:/home/claude/.gstack \
     -v "${TOKEN_VOLUME}:/home/claude/.config/gh-tokens" \
-    ${anthropic_key:+-e ANTHROPIC_API_KEY="$anthropic_key"} \
-    ${pass:+-e GH_REPO_PASS="$pass"} \
+    -v "$secrets_dir:/run/secrets:ro" \
     ${repo:+-e GH_REPO="$repo"} \
-    "$DOCKER_IMAGE"
+    "$DOCKER_IMAGE" || rc=$?
+  rm -rf "$secrets_dir"
+  return $rc
 }
 
 cmd_list() {
