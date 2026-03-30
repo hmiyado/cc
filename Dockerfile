@@ -1,11 +1,7 @@
 FROM node:24-slim
 
-RUN npm install -g npm@latest && \
-    echo "min-release-age=14" >> /root/.npmrc
-
 RUN apt-get update && apt-get install -y \
     git curl unzip ca-certificates jq \
-    && curl -fsSL https://bun.sh/install | bash \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
@@ -13,8 +9,6 @@ RUN apt-get update && apt-get install -y \
        > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
-
-ENV PATH="/root/.bun/bin:$PATH"
 
 RUN curl -fsSL https://claude.ai/install.sh | bash \
     && cp -L /root/.local/bin/claude /usr/local/bin/claude \
