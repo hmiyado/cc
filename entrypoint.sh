@@ -16,15 +16,13 @@ ANTHROPIC_API_KEY=$(_read_secret anthropic_api_key)
 
 # GitHub PAT の復号と認証
 if [ -n "${GH_REPO:-}" ]; then
-  GH_REPO_PASS=$(_read_secret gh_repo_pass)
-
-  if [ -n "$GH_REPO_PASS" ]; then
+  if [ -f "$SECRETS_DIR/gh_repo_pass" ]; then
     KEY="$(echo "$GH_REPO" | sed 's|/|-|').enc"
     TOKEN_FILE="$TOKEN_DIR/$KEY"
 
     if [ -f "$TOKEN_FILE" ]; then
-      TOKEN=$(openssl enc -d -aes-256-cbc -pbkdf2 \
-        -pass pass:"$GH_REPO_PASS" \
+      TOKEN=$(openssl enc -d -aes-256-gcm -pbkdf2 -iter 600000 \
+        -pass file:"$SECRETS_DIR/gh_repo_pass" \
         -in "$TOKEN_FILE" 2>/dev/null || echo "")
       if [ -n "$TOKEN" ]; then
         gh auth login --with-token <<< "$TOKEN"

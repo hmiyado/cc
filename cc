@@ -279,7 +279,7 @@ cmd_init() {
     -v "$secrets_dir:/run/secrets:ro" \
     -e KEY="$key" \
     alpine sh -c \
-      'cat /run/secrets/token | openssl enc -aes-256-cbc -pbkdf2 -pass file:/run/secrets/pass -out "/tokens/$KEY" && chmod 600 "/tokens/$KEY"' || rc=$?
+      'cat /run/secrets/token | openssl enc -aes-256-gcm -pbkdf2 -iter 600000 -pass file:/run/secrets/pass -out "/tokens/$KEY" && chmod 600 "/tokens/$KEY"' || rc=$?
   rm -rf "$secrets_dir"
   [ $rc -ne 0 ] && return $rc
 
