@@ -48,10 +48,10 @@ cc (Bash) → docker run my-claude-code → entrypoint.sh → claude
 |---|---|
 | `DOCKER_IMAGE` | `my-claude-code` |
 | `OP_VAULT` | `CC` |
-| `OP_ITEM_PREFIX` | `claude-docker` |
+| `OP_ITEM_PREFIX` | `containered-claude` |
 | `TOKEN_VOLUME` | `claude-gh-tokens` |
 
-1Password アイテム名: `claude-docker/{owner}/{repo}`、参照パス: `op://Private/claude-docker/{repo}/password`
+1Password アイテム名: `containered-claude--{owner}-{repo}`、参照パス: `op://CC/containered-claude--{owner}-{repo}/password`
 
 ## 依存
 

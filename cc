@@ -3,9 +3,8 @@ set -euo pipefail
 
 DOCKER_IMAGE="my-claude-code"
 OP_VAULT="CC"
-OP_ITEM_PREFIX="claude-docker"
-OP_GLOBAL_ITEM="claude-docker-global"
-TOKEN_VOLUME="claude-gh-tokens"
+OP_ITEM_PREFIX="containered-claude"
+OP_GLOBAL_ITEM="containered-claude-global"
 
 KEYCHAIN_SERVICE="cc"
 CC_REGISTRY="${HOME}/.cc_registry"
@@ -20,11 +19,6 @@ _repo_from_remote() {
   git remote get-url origin 2>/dev/null \
     | sed 's|git@github.com:||;s|https://github.com/||;s|\.git$||' \
     || echo ""
-}
-
-_token_file_key() {
-  local repo="$1"
-  echo "$(echo "$repo" | sed 's|/|-|').enc"
 }
 
 # init 時に呼ぶ: 未設定なら対話選択してコンフィグに保存
@@ -101,7 +95,7 @@ _op_item_name() {
   local key="$1"
   case "$key" in
     global)  echo "$OP_GLOBAL_ITEM" ;;
-    repo:*)  echo "${OP_ITEM_PREFIX}/${key#repo:}" ;;
+    repo:*)  echo "${OP_ITEM_PREFIX}--${key#repo:}" | tr '/' '-' ;;
   esac
 }
 
@@ -127,7 +121,7 @@ _secret_read() {
   local key="$1"
   case "$SECRETS_BACKEND" in
     1password)
-      op read "op://${OP_VAULT}/$(_op_item_name "$key")/password" 2>/dev/null || echo ""
+      op item get "$(_op_item_name "$key")" --vault "$OP_VAULT" --fields password --reveal 2>/dev/null || echo ""
       ;;
     keychain)
       security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$key" -w 2>/dev/null || echo ""
@@ -234,20 +228,6 @@ cmd_init() {
   echo "リポジトリ: $repo"
   echo ""
 
-  if ! _secret_exists "$secret_key"; then
-    echo "パスフレーズを登録します..."
-    local pass
-    pass=$(openssl rand -base64 32)
-    _secret_write "$secret_key" "$pass"
-    _registry_add "$repo"
-    case "$SECRETS_BACKEND" in
-      1password) echo "登録しました: op://${OP_VAULT}/${OP_ITEM_PREFIX}/${repo}/password" ;;
-      keychain)  echo "登録しました: keychain ${KEYCHAIN_SERVICE}/${secret_key}" ;;
-    esac
-  else
-    echo "登録済みです。"
-  fi
-
   if [ -z "$remote_repo" ]; then
     echo "GitHub リポジトリと紐づいていないため、PAT の登録をスキップします。"
     return
@@ -261,27 +241,7 @@ cmd_init() {
   read -rsp "トークンを貼り付けてください: " token
   echo ""
 
-  local pass
-  pass=$(_secret_read "$secret_key")
-  local key
-  key=$(_token_file_key "$repo")
-
-  local secrets_dir
-  secrets_dir=$(mktemp -d)
-  chmod 700 "$secrets_dir"
-  printf '%s' "$pass" > "$secrets_dir/pass"
-  printf '%s' "$token" > "$secrets_dir/token"
-  chmod 600 "$secrets_dir"/*
-
-  local rc=0
-  docker run --rm \
-    -v "${TOKEN_VOLUME}:/tokens" \
-    -v "$secrets_dir:/run/secrets:ro" \
-    -e KEY="$key" \
-    alpine sh -c \
-      'cat /run/secrets/token | openssl enc -aes-256-gcm -pbkdf2 -iter 600000 -pass file:/run/secrets/pass -out "/tokens/$KEY" && chmod 600 "/tokens/$KEY"' || rc=$?
-  rm -rf "$secrets_dir"
-  [ $rc -ne 0 ] && return $rc
+  _secret_write "$secret_key" "$token"
 
   echo "保存しました: $repo"
 }
@@ -297,43 +257,67 @@ cmd_run() {
   local repo
   repo=$(_repo_from_remote)
 
-  local anthropic_key=""
-  if $use_api_key; then
-    anthropic_key=$(_secret_read "global")
-    if [ -z "$anthropic_key" ]; then
-      echo "Error: Anthropic API キーが未登録です。cc init -g を実行してください。" >&2
-      exit 1
-    fi
-  fi
-
-  local pass=""
-  if [ -n "$repo" ]; then
-    pass=$(_secret_read "repo:${repo}")
-    if [ -z "$pass" ]; then
-      echo "Warning: $repo は未登録です。cc init を実行してください。" >&2
-      echo "認証なしで起動します。" >&2
-    fi
-  fi
-
-  local secrets_dir
-  secrets_dir=$(mktemp -d)
-  chmod 700 "$secrets_dir"
-  [ -n "$anthropic_key" ] && { printf '%s' "$anthropic_key" > "$secrets_dir/anthropic_api_key"; chmod 600 "$secrets_dir/anthropic_api_key"; }
-  [ -n "$pass" ]          && { printf '%s' "$pass"          > "$secrets_dir/gh_repo_pass";      chmod 600 "$secrets_dir/gh_repo_pass"; }
-
   local tty_flags="-i"
   [ -t 0 ] && tty_flags="-it"
 
+  local base_docker_args=(
+    run $tty_flags --rm
+    -v "$(pwd)":/workspace
+    -v ~/.claude:/home/claude/.claude
+    -v ~/.gstack:/home/claude/.gstack
+    ${repo:+-e GH_REPO="$repo"}
+  )
+
   local rc=0
-  docker run $tty_flags --rm \
-    -v "$(pwd)":/workspace \
-    -v ~/.claude:/home/claude/.claude \
-    -v ~/.gstack:/home/claude/.gstack \
-    -v "${TOKEN_VOLUME}:/home/claude/.config/gh-tokens" \
-    -v "$secrets_dir:/run/secrets:ro" \
-    ${repo:+-e GH_REPO="$repo"} \
-    "$DOCKER_IMAGE" || rc=$?
-  rm -rf "$secrets_dir"
+  case "$SECRETS_BACKEND" in
+    1password)
+      local op_env=()
+      local extra_docker_args=()
+      if $use_api_key; then
+        op_env+=("ANTHROPIC_API_KEY=op://${OP_VAULT}/${OP_GLOBAL_ITEM}/password")
+        extra_docker_args+=(-e ANTHROPIC_API_KEY)
+      fi
+      if [ -n "$repo" ]; then
+        local op_item
+        op_item=$(_op_item_name "repo:${repo}")
+        op_env+=("GH_TOKEN=op://${OP_VAULT}/${op_item}/password")
+        extra_docker_args+=(-e GH_TOKEN)
+      fi
+      if [ ${#op_env[@]} -gt 0 ]; then
+        env "${op_env[@]}" op run -- docker "${base_docker_args[@]}" "${extra_docker_args[@]}" "$DOCKER_IMAGE" || rc=$?
+      else
+        docker "${base_docker_args[@]}" "$DOCKER_IMAGE" || rc=$?
+      fi
+      ;;
+    keychain)
+      local secrets_dir
+      secrets_dir=$(mktemp -d)
+      chmod 700 "$secrets_dir"
+      if $use_api_key; then
+        local anthropic_key
+        anthropic_key=$(_secret_read "global")
+        if [ -z "$anthropic_key" ]; then
+          echo "Error: Anthropic API キーが未登録です。cc init -g を実行してください。" >&2
+          rm -rf "$secrets_dir"; exit 1
+        fi
+        printf '%s' "$anthropic_key" > "$secrets_dir/anthropic_api_key"
+        chmod 600 "$secrets_dir/anthropic_api_key"
+      fi
+      if [ -n "$repo" ]; then
+        local token
+        token=$(_secret_read "repo:${repo}")
+        if [ -z "$token" ]; then
+          echo "Warning: $repo は未登録です。cc init を実行してください。" >&2
+          echo "認証なしで起動します。" >&2
+        else
+          printf '%s' "$token" > "$secrets_dir/gh_token"
+          chmod 600 "$secrets_dir/gh_token"
+        fi
+      fi
+      docker "${base_docker_args[@]}" -v "$secrets_dir:/run/secrets:ro" "$DOCKER_IMAGE" || rc=$?
+      rm -rf "$secrets_dir"
+      ;;
+  esac
   return $rc
 }
 
@@ -351,14 +335,6 @@ cmd_revoke() {
   if [ -z "$repo" ]; then
     repo="$(basename "$(pwd)")"
   fi
-  local key
-  key=$(_token_file_key "$repo")
-
-  docker run --rm \
-    -v "${TOKEN_VOLUME}:/tokens" \
-    -e KEY="$key" \
-    alpine sh -c 'rm -f "/tokens/$KEY"'
-
   _secret_delete "repo:${repo}"
   _registry_remove "$repo"
 

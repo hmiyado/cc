@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-TOKEN_DIR="/home/claude/.config/gh-tokens"
 SECRETS_DIR="/run/secrets"
 
 # シークレットファイルから読み込み（環境変数には残さない）
@@ -10,29 +9,18 @@ _read_secret() {
   [ -f "$file" ] && cat "$file" || echo ""
 }
 
-# Anthropic API キーをセット（Claude Code が参照する環境変数）
-ANTHROPIC_API_KEY=$(_read_secret anthropic_api_key)
+# Anthropic API キーをセット（op run 経由の env var、またはシークレットファイル）
+[ -z "${ANTHROPIC_API_KEY:-}" ] && ANTHROPIC_API_KEY=$(_read_secret anthropic_api_key)
 [ -n "$ANTHROPIC_API_KEY" ] && export ANTHROPIC_API_KEY
 
-# GitHub PAT の復号と認証
+# GitHub PAT で認証（op run 経由の env var、またはシークレットファイル）
 if [ -n "${GH_REPO:-}" ]; then
-  if [ -f "$SECRETS_DIR/gh_repo_pass" ]; then
-    KEY="$(echo "$GH_REPO" | sed 's|/|-|').enc"
-    TOKEN_FILE="$TOKEN_DIR/$KEY"
-
-    if [ -f "$TOKEN_FILE" ]; then
-      TOKEN=$(openssl enc -d -aes-256-gcm -pbkdf2 -iter 600000 \
-        -pass file:"$SECRETS_DIR/gh_repo_pass" \
-        -in "$TOKEN_FILE" 2>/dev/null || echo "")
-      if [ -n "$TOKEN" ]; then
-        gh auth login --with-token <<< "$TOKEN"
-        echo "gh: $GH_REPO で認証しました。"
-      else
-        echo "Warning: トークンの復号に失敗しました。cc init を再実行してください。" >&2
-      fi
-    else
-      echo "Warning: トークンファイルが見つかりません。cc init を実行してください。" >&2
-    fi
+  TOKEN="${GH_TOKEN:-$(_read_secret gh_token)}"
+  if [ -n "$TOKEN" ]; then
+    gh auth login --with-token <<< "$TOKEN"
+    echo "gh: $GH_REPO で認証しました。"
+  else
+    echo "Warning: トークンが見つかりません。cc init を実行してください。" >&2
   fi
 fi
 
