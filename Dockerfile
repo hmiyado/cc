@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get update && apt-get install -y gh=2.89.0 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://claude.ai/install.sh | bash \
+ARG CLAUDE_VERSION=2.1.92
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_VERSION}" \
     && cp -L /root/.local/bin/claude /usr/local/bin/claude \
     && chmod 755 /usr/local/bin/claude
 
