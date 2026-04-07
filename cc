@@ -258,13 +258,26 @@ cmd_run() {
   repo=$(_repo_from_remote)
 
   local tty_flags="-i"
-  [ -t 0 ] && tty_flags="-it"
+  local term_args=()
+  if [ -t 0 ]; then
+    tty_flags="-it"
+    local _stty_size
+    _stty_size=$(stty size 2>/dev/null)
+    local _rows="${_stty_size% *}"
+    local _cols="${_stty_size#* }"
+    term_args=(
+      -e TERM="xterm-256color"
+      -e COLUMNS="${_cols:-80}"
+      -e LINES="${_rows:-24}"
+    )
+  fi
 
   local base_docker_args=(
     run $tty_flags --rm
     -v "$(pwd)":/workspace
     -v ~/.claude:/home/claude/.claude
     -v ~/.gstack:/home/claude/.gstack
+    "${term_args[@]}"
     ${repo:+-e GH_REPO="$repo"}
   )
 
@@ -345,10 +358,17 @@ cmd_revoke() {
 # エントリーポイント
 # ---------------------------------------------------------------------------
 
+cmd_build() {
+  local script_dir
+  script_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+  docker build -t "$DOCKER_IMAGE" "$script_dir"
+}
+
 case "${1:-run}" in
   init)   cmd_init "${2:-}" ;;
   run)    cmd_run "${2:-}" ;;
+  build)  cmd_build ;;
   list)   cmd_list ;;
   revoke) cmd_revoke ;;
-  *)      echo "Usage: cc [init [-g]|run [--api-key]|list|revoke]" >&2; exit 1 ;;
+  *)      echo "Usage: cc [init [-g]|run [--api-key]|build|list|revoke]" >&2; exit 1 ;;
 esac

@@ -14,11 +14,11 @@ _read_secret() {
 [ -n "$ANTHROPIC_API_KEY" ] && export ANTHROPIC_API_KEY
 
 # GitHub PAT で認証（op run 経由の env var、またはシークレットファイル）
-if [ -n "${GH_REPO:-}" ]; then
-  TOKEN="${GH_TOKEN:-$(_read_secret gh_token)}"
+# GH_TOKEN env var があれば gh CLI はそのまま使うので auth login 不要
+if [ -n "${GH_REPO:-}" ] && [ -z "${GH_TOKEN:-}" ]; then
+  TOKEN=$(_read_secret gh_token)
   if [ -n "$TOKEN" ]; then
-    gh auth login --with-token <<< "$TOKEN"
-    echo "gh: $GH_REPO で認証しました。"
+    export GH_TOKEN="$TOKEN"
   else
     echo "Warning: トークンが見つかりません。cc init を実行してください。" >&2
   fi
@@ -27,6 +27,11 @@ fi
 # オンボーディング・テーマ選択をスキップ、/workspace を信頼
 if [ ! -f "$HOME/.claude.json" ]; then
   echo '{"hasCompletedOnboarding":true,"theme":"dark","projects":{"/workspace":{"hasTrustDialogAccepted":true}}}' > "$HOME/.claude.json"
+fi
+
+# ターミナルサイズを PTY に反映（tmux など環境でレイアウト崩れを防ぐ）
+if [ -n "${COLUMNS:-}" ] && [ -n "${LINES:-}" ]; then
+  stty cols "$COLUMNS" rows "$LINES" 2>/dev/null || true
 fi
 
 exec claude --dangerously-skip-permissions

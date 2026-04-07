@@ -1,4 +1,4 @@
-FROM node:24-slim
+FROM node:24-slim@sha256:b506e7321f176aae77317f99d67a24b272c1f09f1d10f1761f2773447d8da26c
 
 RUN apt-get update && apt-get install -y \
     git curl unzip ca-certificates jq \
@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     && echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
        https://cli.github.com/packages stable main" \
        > /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update && apt-get install -y gh \
+    && apt-get update && apt-get install -y gh=2.89.0 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://claude.ai/install.sh | bash \
