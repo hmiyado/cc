@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 SECRETS_DIR="/run/secrets"
 
@@ -34,4 +34,4 @@ if [ -n "${COLUMNS:-}" ] && [ -n "${LINES:-}" ]; then
   stty cols "$COLUMNS" rows "$LINES" 2>/dev/null || true
 fi
 
-exec claude --dangerously-skip-permissions
+exec claude --dangerously-skip-permissions "$@"

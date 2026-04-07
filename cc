@@ -252,9 +252,14 @@ cmd_run() {
   _load_backend
   _require_backend
   local use_api_key=false
-  if [ "${1:-}" = "--api-key" ]; then
-    use_api_key=true
-  fi
+  local claude_args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --api-key) use_api_key=true; shift ;;
+      --) shift; claude_args+=("$@"); break ;;
+      *) claude_args+=("$1"); shift ;;
+    esac
+  done
 
   local repo
   repo=$(_repo_from_remote)
@@ -299,21 +304,22 @@ cmd_run() {
         extra_docker_args+=(-e GH_TOKEN)
       fi
       if [ ${#op_env[@]} -gt 0 ]; then
-        env "${op_env[@]}" op run -- docker "${base_docker_args[@]}" "${extra_docker_args[@]}" "$DOCKER_IMAGE" || rc=$?
+        env "${op_env[@]}" op run -- docker "${base_docker_args[@]}" "${extra_docker_args[@]}" "$DOCKER_IMAGE" "${claude_args[@]}" || rc=$?
       else
-        docker "${base_docker_args[@]}" "$DOCKER_IMAGE" || rc=$?
+        docker "${base_docker_args[@]}" "$DOCKER_IMAGE" "${claude_args[@]}" || rc=$?
       fi
       ;;
     keychain)
       local secrets_dir
       secrets_dir=$(mktemp -d)
       chmod 700 "$secrets_dir"
+      trap 'rm -rf "$secrets_dir"' EXIT
       if $use_api_key; then
         local anthropic_key
         anthropic_key=$(_secret_read "global")
         if [ -z "$anthropic_key" ]; then
           echo "Error: Anthropic API キーが未登録です。cc init -g を実行してください。" >&2
-          rm -rf "$secrets_dir"; exit 1
+          exit 1
         fi
         printf '%s' "$anthropic_key" > "$secrets_dir/anthropic_api_key"
         chmod 600 "$secrets_dir/anthropic_api_key"
@@ -329,8 +335,7 @@ cmd_run() {
           chmod 600 "$secrets_dir/gh_token"
         fi
       fi
-      docker "${base_docker_args[@]}" -v "$secrets_dir:/run/secrets:ro" "$DOCKER_IMAGE" || rc=$?
-      rm -rf "$secrets_dir"
+      docker "${base_docker_args[@]}" -v "$secrets_dir:/run/secrets:ro" "$DOCKER_IMAGE" "${claude_args[@]}" || rc=$?
       ;;
   esac
   return $rc
@@ -368,9 +373,9 @@ cmd_build() {
 
 case "${1:-run}" in
   init)   cmd_init "${2:-}" ;;
-  run)    cmd_run "${2:-}" ;;
+  run)    [ $# -gt 0 ] && shift; cmd_run "$@" ;;
   build)  cmd_build ;;
   list)   cmd_list ;;
   revoke) cmd_revoke ;;
-  *)      echo "Usage: cc [init [-g]|run [--api-key]|build|list|revoke]" >&2; exit 1 ;;
+  *)      echo "Usage: cc [init [-g]|run [--api-key] [-- <claude args>]|build|list|revoke]" >&2; exit 1 ;;
 esac
