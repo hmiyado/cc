@@ -153,8 +153,9 @@ _secret_list_repos() {
     1password)
       op item list --vault "$OP_VAULT" --format json \
         | jq -r '.[].title' \
-        | grep "^${OP_ITEM_PREFIX}/" \
-        | sed "s|^${OP_ITEM_PREFIX}/||"
+        | grep "^${OP_ITEM_PREFIX}--" \
+        | grep -v "^${OP_GLOBAL_ITEM}$" \
+        | sed "s|^${OP_ITEM_PREFIX}--||"
       ;;
     keychain)
       [ -f "$CC_REGISTRY" ] && cat "$CC_REGISTRY" || true
@@ -242,6 +243,7 @@ cmd_init() {
   echo ""
 
   _secret_write "$secret_key" "$token"
+  _registry_add "$repo"
 
   echo "保存しました: $repo"
 }
