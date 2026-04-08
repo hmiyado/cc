@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 概要
 
-Claude Code をどのプロジェクトでもカジュアルに使うための Docker ベース CLI ツール。GitHub PAT を AES-256-CBC で暗号化し、1Password でパスフレーズを管理する。
+Claude Code をどのプロジェクトでもカジュアルに使うための Docker ベース CLI ツール。GitHub PAT と Anthropic API キーを 1Password または macOS Keychain で管理し、`op run` 経由でコンテナに渡す。
 
 ## セットアップ
 
@@ -29,9 +29,9 @@ ln -s "$(pwd)/cc" ~/.local/bin/cc
 cc (Bash) → docker run my-claude-code → entrypoint.sh → claude
 ```
 
-- **cc**: ホスト側のエントリーポイント。1Password CLI (`op`) でパスフレーズを取得し、Docker コンテナに環境変数として渡す
-- **Dockerfile**: `node:24-slim` ベース。Bun・GitHub CLI・Claude Code CLI をインストール
-- **entrypoint.sh**: コンテナ起動時に暗号化トークンを復号し `gh auth login` してから `claude` を実行
+- **cc**: ホスト側のエントリーポイント。1Password CLI (`op run`) または Keychain からシークレットを取得し、Docker コンテナに渡す
+- **Dockerfile**: `node:24-slim` ベース。GitHub CLI・Claude Code CLI をインストール
+- **entrypoint.sh**: コンテナ起動時にシークレットを環境変数にセットし `claude` を実行
 
 ## マウント構成
 
@@ -39,8 +39,6 @@ cc (Bash) → docker run my-claude-code → entrypoint.sh → claude
 |---|---|---|
 | `/workspace` | `$(pwd)` | 作業ディレクトリ |
 | `/home/claude/.claude` | `~/.claude` | Claude Code 認証・設定 |
-| `/home/claude/.gstack` | `~/.gstack` | gstack データ |
-| `/home/claude/.config/gh-tokens` | `claude-gh-tokens` (named volume) | 暗号化済み GitHub PAT |
 
 ## 定数（cc スクリプト内）
 
@@ -49,10 +47,9 @@ cc (Bash) → docker run my-claude-code → entrypoint.sh → claude
 | `DOCKER_IMAGE` | `my-claude-code` |
 | `OP_VAULT` | `CC` |
 | `OP_ITEM_PREFIX` | `containered-claude` |
-| `TOKEN_VOLUME` | `claude-gh-tokens` |
 
 1Password アイテム名: `containered-claude--{owner}-{repo}`、参照パス: `op://CC/containered-claude--{owner}-{repo}/password`
 
 ## 依存
 
-ホスト側: Docker, 1Password CLI (`op`), `openssl`, `jq`
+ホスト側: Docker, 1Password CLI (`op`) または macOS Keychain, `jq`
