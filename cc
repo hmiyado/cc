@@ -283,7 +283,6 @@ cmd_run() {
     run $tty_flags --rm
     -v "$(pwd)":/workspace
     -v ~/.claude:/home/claude/.claude
-    -v ~/.gstack:/home/claude/.gstack
     "${term_args[@]}"
     ${repo:+-e GH_REPO="$repo"}
   )
