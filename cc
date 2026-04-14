@@ -283,7 +283,7 @@ cmd_run() {
     run $tty_flags --rm
     -v "$(pwd)":/workspace
     -v ~/.claude:/home/claude/.claude
-    "${term_args[@]}"
+    ${term_args[@]+"${term_args[@]}"}
     ${repo:+-e GH_REPO="$repo"}
   )
 
@@ -303,9 +303,9 @@ cmd_run() {
         extra_docker_args+=(-e GH_TOKEN)
       fi
       if [ ${#op_env[@]} -gt 0 ]; then
-        env "${op_env[@]}" op run -- docker "${base_docker_args[@]}" "${extra_docker_args[@]}" "$DOCKER_IMAGE" "${claude_args[@]}" || rc=$?
+        env "${op_env[@]}" op run -- docker "${base_docker_args[@]}" ${extra_docker_args[@]+"${extra_docker_args[@]}"} "$DOCKER_IMAGE" ${claude_args[@]+"${claude_args[@]}"} || rc=$?
       else
-        docker "${base_docker_args[@]}" "$DOCKER_IMAGE" "${claude_args[@]}" || rc=$?
+        docker "${base_docker_args[@]}" "$DOCKER_IMAGE" ${claude_args[@]+"${claude_args[@]}"} || rc=$?
       fi
       ;;
     keychain)
@@ -334,7 +334,7 @@ cmd_run() {
           chmod 600 "$secrets_dir/gh_token"
         fi
       fi
-      docker "${base_docker_args[@]}" -v "$secrets_dir:/run/secrets:ro" "$DOCKER_IMAGE" "${claude_args[@]}" || rc=$?
+      docker "${base_docker_args[@]}" -v "$secrets_dir:/run/secrets:ro" "$DOCKER_IMAGE" ${claude_args[@]+"${claude_args[@]}"} || rc=$?
       ;;
   esac
   return $rc
